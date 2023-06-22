@@ -2,7 +2,7 @@
 
 Restart Sampling for Improving Generative Processes
 
-
+by Yilun Xu, Mingyang Deng, Xiang Cheng, Yonglong Tian, Ziming Liu, Tommi S. Jaakkola
 
 
 
