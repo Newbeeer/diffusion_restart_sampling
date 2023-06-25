@@ -111,6 +111,8 @@ stats_path: path to FID statistics, such as ./cifar10-32x32.npz or ./imagenet-64
 
 ### Stable Diffusion
 
+TODO: merge into the diffuser repo.
+
 **The working directory for standard benchmarks is under `./diffuser`**
 
 #### 1. Data processing:
