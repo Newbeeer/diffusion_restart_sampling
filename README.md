@@ -18,7 +18,7 @@ Empirically, **Restart sampler surpasses previous diffusion SDE and ODE samplers
 
 
 
-### Standard Benchmarks (CIFAR-10, ImageNet-64$\times $64)
+### Standard Benchmarks (CIFAR-10, ImageNet-64)
 
 **The working directory for standard benchmarks is under `./benchmarks`**
 
@@ -71,9 +71,7 @@ pfgmpp: flag for using PFGM++
 D: augmented dimension in PFGM++
 ```
 
-The `restart_info` is in the format of  $\{``i": [N_{\textrm{Restart},i}, K_i, t_{\textrm{min}, i}, t_{\textrm{max}, i}]\}_{i=0}^{l-1}$, 
-
-such as `{"0": [3, 2, 0.06, 0.30]}`. Please refer to Table 3 (CIFAR-10) and Table5 (ImageNet-64) for detailed configuration. For example, on uncond. EDM cond. ImageNet-64, with NFE=203, FID=1.41, the command line is:
+The `restart_info` is in the format of  $\{$"$i$": $[N_{\textrm{Restart},i}, K_i, t_{\textrm{min}, i}, t_{\textrm{max}, i}]\}_{i=0}^{l-1}$ , such as `{"0": [3, 2, 0.06, 0.30]}`. Please refer to Table 3 (CIFAR-10) and Table5 (ImageNet-64) for detailed configuration. For example, on uncond. EDM cond. ImageNet-64, with NFE=203, FID=1.41, the command line is:
 
 ```shell
 torchrun --standalone --nproc_per_node=8 generate_restart.py --outdir=./imgs \ 
@@ -81,9 +79,7 @@ torchrun --standalone --nproc_per_node=8 generate_restart.py --outdir=./imgs \
 --steps=36 --seeds=00000-49999 --name=imagenet_edm
 ```
 
-We also provide the extentive Restart configurations in `params_cifar10_vp.txt`, `params_imagenet_edm.txt`, corresponding to Table 3 (CIFAR-10) and Table5 (ImageNet-64) respectively. Each line in these `txt` is in the form of $N_{\textrm{main}} \{``i": [N_{\textrm{Restart},i}, K_i, t_{\textrm{min}, i}, t_{\textrm{max}, i}]\}_{i=0}^{l-1}$. 
-
-To sweep the Restart configurations in the `txt` files, please run
+We also provide the extentive Restart configurations in `params_cifar10_vp.txt`, `params_imagenet_edm.txt`, corresponding to Table 3 (CIFAR-10) and Table5 (ImageNet-64) respectively. Each line in these `txt` is in the form of $N_{\textrm{main}} \{$"$i$":$ [N_{\textrm{Restart},i}, K_i, t_{\textrm{min}, i}, t_{\textrm{max}, i}]\}_{i=0}^{l-1}$. To sweep the Restart configurations in the `txt` files, please run
 
 ```shell
 python3 hyperparams.py --dataset {dataset} --method {method}
