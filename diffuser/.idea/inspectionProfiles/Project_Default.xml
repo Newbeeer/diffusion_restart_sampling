@@ -1,0 +1,26 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="false" level="WARNING" enabled_by_default="false">
+      <option name="ignoredPackages">
+        <value>
+          <list size="13">
+            <item index="0" class="java.lang.String" itemvalue="tqdm" />
+            <item index="1" class="java.lang.String" itemvalue="torchvision" />
+            <item index="2" class="java.lang.String" itemvalue="visdom" />
+            <item index="3" class="java.lang.String" itemvalue="dominate" />
+            <item index="4" class="java.lang.String" itemvalue="wget" />
+            <item index="5" class="java.lang.String" itemvalue="torch" />
+            <item index="6" class="java.lang.String" itemvalue="tensorboardX" />
+            <item index="7" class="java.lang.String" itemvalue="transformers" />
+            <item index="8" class="java.lang.String" itemvalue="outdated" />
+            <item index="9" class="java.lang.String" itemvalue="wilds" />
+            <item index="10" class="java.lang.String" itemvalue="pytorch" />
+            <item index="11" class="java.lang.String" itemvalue="pytz" />
+            <item index="12" class="java.lang.String" itemvalue="ogb" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
