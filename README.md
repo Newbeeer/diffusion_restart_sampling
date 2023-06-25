@@ -22,7 +22,9 @@ Results on [Stable Diffusion v1.5](https://github.com/huggingface/diffusers):
 
 
 
-### Standard Benchmarks (CIFAR-10, ImageNet-64)
+
+
+## Standard Benchmarks (CIFAR-10, ImageNet-64)
 
 **The working directory for standard benchmarks is under `./benchmarks`**
 
@@ -107,13 +109,19 @@ name: name of experiments (specified in geneation command line)
 stats_path: path to FID statistics, such as ./cifar10-32x32.npz or ./imagenet-64x64.npz
 ```
 
+---
 
 
-### Stable Diffusion
+
+
+
+## Stable Diffusion
 
 TODO: merge into the diffuser repo.
 
 **The working directory for standard benchmarks is under `./diffuser`**
+
+![schematic](assets/fig_5.png)
 
 #### 1. Data processing:
 
@@ -155,4 +163,3 @@ torchrun --rdzv_endpoint=0.0.0.0:1201 --nproc_per_node=8 generate.py
   ```
 
 
-![schematic](assets/fig_5.png)
