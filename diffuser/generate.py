@@ -1,5 +1,5 @@
 # make sure you're logged in with \`huggingface-cli login\`
-from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler, DDIMScheduler, DDPMScheduler, SDEScheduler, EulerDiscreteScheduler
+from diffusers import StableDiffusionPipeline, DDIMScheduler, DDPMScheduler, SDEScheduler, EulerDiscreteScheduler
 import torch
 from coco_data_loader import text_image_pair
 from PIL import Image
@@ -12,7 +12,7 @@ import numpy as np
 import tqdm
 
 parser = argparse.ArgumentParser(description='Generate images with stable diffusion')
-parser.add_argument('--steps', type=int, default=50, help='number of inference steps during sampling')
+parser.add_argument('--steps', type=int, default=30, help='number of inference steps during sampling')
 parser.add_argument('--generate_seed', type=int, default=6)
 parser.add_argument('--w', type=float, default=7.5)
 parser.add_argument('--s_noise', type=float, default=1.)
@@ -59,6 +59,7 @@ pipe = pipe.to("cuda")
 if args.scheduler == 'DDPM':
     pipe.scheduler = DDPMScheduler.from_config(pipe.scheduler.config)
 elif args.scheduler == 'DDIM':
+    # recommend using DDIM with Restart
     pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
     pipe.scheduler.use_sigma = args.sigma
 elif args.scheduler == 'SDE':
@@ -78,6 +79,9 @@ if args.name is None:
 else:
     save_dir = os.path.join(args.save_path,
                             f'scheduler_{args.scheduler}_steps_{args.steps}_restart_{args.restart}_w_{args.w}_second_{args.second}_seed_{args.generate_seed}_sigma_{args.sigma}_name_{args.name}')
+
+dist.print0("save images to {}".format(save_dir))
+
 if dist.get_rank() == 0 and not os.path.exists(save_dir):
     os.mkdir(save_dir)
 
@@ -85,7 +89,6 @@ if dist.get_rank() == 0 and not os.path.exists(save_dir):
 for cnt, mini_batch in enumerate(tqdm.tqdm(rank_batches, unit='batch', disable=(dist.get_rank() != 0))):
     torch.distributed.barrier()
     text = list(mini_batch)
-    #dist.print0(text)
     image = pipe(text, generator=generator, num_inference_steps=args.steps, guidance_scale=args.w, restart=args.restart, second_order=args.second, dist=dist, S_noise=args.s_noise).images
 
     for text_idx, global_idx in enumerate(rank_batches_index[cnt]):

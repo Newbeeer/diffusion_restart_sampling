@@ -127,10 +127,12 @@ torchrun --rdzv_endpoint=0.0.0.0:1201 --nproc_per_node=8 generate.py
 	--steps: number of sampling steps (default=50) 
 	--scheduler: baseline method (DDIM | DDPM | Heun)
 	--save_path: path to save images
-	--w: classifier-guidance weight ([1, 8])
+	--w: classifier-guidance weight ({2,3,5,8})
 	--name: name of experiments
-	(--restart: apply Restart sampling)
+	--restart
 ```
+
+
 
 #### 3. Evaluation
 

@@ -652,10 +652,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         # 4. Prepare timesteps
 
-        # print("debug:")
-        # print(self.scheduler)
-        # print(num_inference_steps)
-
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
@@ -678,33 +674,25 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         restart_list = {}
         if restart:
-            # TODO: change it to the index of 1...1000
-            ### {restart_index : [number of restart iteration, restart_max_time, num_steps], ... } ###
-
             all_sigmas = torch.sqrt((1 - self.scheduler.alphas_cumprod) / self.scheduler.alphas_cumprod)
             sigmas = all_sigmas[timesteps.cpu().numpy()]
-            idx_0 = int(torch.argmin(abs(sigmas - 0.1), dim=0))
-            idx_1 = int(torch.argmin(abs(sigmas - 0.23), dim=0))
-            idx_2 = int(torch.argmin(abs(sigmas - 1.), dim=0))
-            idx_3 = int(torch.argmin(abs(sigmas - 3.), dim=0))
-            idx_4 = int(torch.argmin(abs(sigmas - 5.), dim=0))
-            idx_5 = int(torch.argmin(abs(sigmas - 3.), dim=0))
-            idx_6 = int(torch.argmin(abs(sigmas - 6.), dim=0))
-            idx_7 = int(torch.argmin(abs(sigmas - 2.), dim=0))
-            idx_8 = int(torch.argmin(abs(sigmas - 8.), dim=0))
-            #print(sigmas, idx_0)
-            #exit(0)
-            # {restart_time : [number of restart iteration, restart_max_sigma, num_steps], ... }
 
-            restart_list = {0.1: [2, 2, 10]}
-            #restart_list = {0.1: [2, 3, 10]}
-            #restart_list = {1: [2, 9, 10]}
-            #restart_list = {1: [2, 9, 5], 5: [2, 10, 6]}
+            # {t_min: [N_restart, K, t_max], ... }
+            if guidance_scale == 2:
+                restart_list = {1: [5, 2, 9], 5: [5, 2, 10]}
+            elif guidance_scale == 3:
+                restart_list = {0.1: [10, 2, 3]}
+            elif guidance_scale == 5:
+                restart_list = {0.1: [10, 2, 2]}
+            elif guidance_scale == 8:
+                restart_list = {0.1: [10, 2, 2]}
+
             if dist is not None:
                 dist.print0("restart steps:", restart_list)
 
             temp_list = dict()
 
+            # map t_min to index
             for key, value in restart_list.items():
                 temp_list[int(torch.argmin(abs(sigmas - key), dim=0))] = value
 
@@ -714,7 +702,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        #print("time steps:", timesteps, len(timesteps))
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps[:-1]):
                 # expand the latents if we are doing classifier free guidance
@@ -735,11 +722,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-
-                #print(f"main loop: i:{i}, t:{t}, norm:{latents.view(len(latents), -1).norm(p=2, dim=1).item()}")
                 latents_next = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
 
-                # Apply 2nd order correction.
+                # Apply 2nd order correction (Heun).
                 if second_order and i < len(timesteps) - 2:
                     t_next = timesteps[i + 1]
                     latent_model_input = torch.cat([latents_next] * 2) if do_classifier_free_guidance else latents_next
@@ -767,13 +752,13 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 # ================= restart ================== #
                 if i + 1 in restart_list.keys():
                     restart_idx = i + 1
-                    for restart_iter in range(restart_list[restart_idx][0]):
+                    for restart_iter in range(restart_list[restart_idx][1]):
 
                         new_scheduler = copy.deepcopy(self.scheduler)
 
-                        # convert sigma to timesteps
-                        max_idx = int(torch.argmin(abs(all_sigmas - restart_list[restart_idx][1]), dim=0))
-                        new_scheduler.timesteps = torch.round(torch.linspace(timesteps[i+1], max_idx, restart_list[restart_idx][2]).flip([0])).long()
+                        # convert t_max to index
+                        max_idx = int(torch.argmin(abs(all_sigmas - restart_list[restart_idx][2]), dim=0))
+                        new_scheduler.timesteps = torch.round(torch.linspace(timesteps[i+1], max_idx, restart_list[restart_idx][1]).flip([0])).long()
                         new_scheduler.timesteps.to(self.scheduler.timesteps.device)
 
                         new_t_steps = new_scheduler.timesteps
@@ -807,7 +792,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
                             # Apply 2nd order correction.
                             if  (j < len(new_t_steps) - 2 or new_t_steps[-1] > 1):
-                            #if False:
                                 new_t_next = new_t_steps[j+1]
                                 latent_model_input = torch.cat([latents_next] * 2) if do_classifier_free_guidance else latents_next
                                 latent_model_input = new_scheduler.scale_model_input(latent_model_input, new_t_next)
