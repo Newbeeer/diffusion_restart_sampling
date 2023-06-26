@@ -55,6 +55,7 @@ Please download the CIFAR-10 or ImageNet checkpoints from [EDM](https://github.c
 | Dataset                | Method                          | Path                                                         |
 | ---------------------- | ------------------------------- | ------------------------------------------------------------ |
 | CIFAR-10               | VP unconditional                | [path](https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/baseline/baseline-cifar10-32x32-uncond-vp.pkl) |
+| CIFAR-10               | EDM unconditional               | [path](https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-uncond-vp.pkl) |
 | CIFAR-10               | PFGM++ ($D=2048$) unconditional | [path](https://drive.google.com/drive/folders/1sZ7vh7o8kuXfFjK8ROWXxtEZi8Srewgo) |
 | ImageNet $64\times 64$ | EDM conditional                 | [path](https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-imagenet-64x64-cond-adm.pkl) |
 
@@ -66,7 +67,7 @@ Generating a large number of images can be time-consuming; the workload can be d
 
 ```shell
 torchrun --standalone --nproc_per_node=8 generate_restart.py --outdir=./imgs \
---restart_info='{restart_config}' --S_min=0.01 --S_max=1 --S_noise 1. \
+--restart_info='{restart_config}' --S_min=0.01 --S_max=1 --S_noise 1.003 \
 --steps={steps} --seeds=00000-49999 --name={name} (--pfgmpp=1) (--aug_dim={D})
 
 
@@ -81,7 +82,7 @@ The `restart_info` is in the format of  $\lbrace i: [N_{\textrm{Restart},i}, K_i
 
 ```shell
 torchrun --standalone --nproc_per_node=8 generate_restart.py --outdir=./imgs \
---restart_info='{"0": [4, 1, 19.35, 40.79], "1": [4, 1, 1.09, 1.92], "2": [4, 5, 0.59, 1.09], "3": [4, 5, 0.30, 0.59], "4": [6, 6, 0.06, 0.30]}' --S_min=0.01 --S_max=1 --S_noise 1. \
+--restart_info='{"0": [4, 1, 19.35, 40.79], "1": [4, 1, 1.09, 1.92], "2": [4, 5, 0.59, 1.09], "3": [4, 5, 0.30, 0.59], "4": [6, 6, 0.06, 0.30]}' --S_min=0.01 --S_max=1 --S_noise 1.003 \
 --steps=36 --seeds=00000-49999 --name=imagenet_edm
 ```
 
@@ -125,7 +126,7 @@ TODO: merge into the diffuser repo.
 
 #### 1. Data processing:
 
-- Step 1: Follow the instruction at the head of `data_process.py`
+- Step 1: Follow the instruction on top of `data_process.py`
 - Step 2: Run `python3 data_process.py` to randomly sampled 5K image-text pair from COCO validation set.
 
 - Step 3: Calculate FID statistics `python fid_edm.py ref --data=path-to-coco-subset --dest=./coco.npz`

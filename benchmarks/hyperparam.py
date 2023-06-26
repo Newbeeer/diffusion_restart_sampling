@@ -47,9 +47,10 @@ def generate(num, name, store = True, **kwargs):
     # If using PFGM++, setting up the augmentation dimension and the method flag
     pfgmpp = 1 if args.method == 'pfgmpp' else 0
     aug_dim = 2048 if args.method == 'pfgmpp' else -1
+    s_noise = 1.003 if args.dataset == 'imagenet' else 1.0
 
     command = f"CUDA_VISIBLE_DEVICES={devices} torchrun --standalone --nproc_per_node={len(devices.split(','))} generate_restart.py --outdir=./imgs " \
-              f"--restart_info='{kwargs['restart']}' --S_min=0.01 --S_max=1 --S_noise 1. " \
+              f"--restart_info='{kwargs['restart']}' --S_min=0.01 --S_max=1 --S_noise={s_noise} " \
               f"--steps={kwargs['steps']} --seeds=00000-{00000+num-1} --name={name} --batch={batch_size} --pfgmpp={pfgmpp} --aug_dim={aug_dim} #generate"
     print(command)
     os.system(command)

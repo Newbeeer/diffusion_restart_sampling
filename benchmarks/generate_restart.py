@@ -63,7 +63,6 @@ def restart_sampler(
     # dist.print0(f"restart configuration: {restart_list}")
 
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):  # 0, ..., N_main -1
-
         x_cur = x_next
         # Increase noise temporarily.
         gamma = min(S_churn / num_steps, np.sqrt(2) - 1) if S_min <= t_cur <= S_max else 0
@@ -89,7 +88,7 @@ def restart_sampler(
 
                 new_t_steps = get_steps(min_t=t_steps[restart_idx], max_t=restart_list[restart_idx][3],
                                         num_steps=restart_list[restart_idx][0], rho=rho)
-
+                dist.print0(f"restart at {restart_idx} with {new_t_steps}")
                 new_total_step = len(new_t_steps)
                 if pfgmpp:
                     beta_gen = Beta(torch.FloatTensor([N / 2.]), torch.FloatTensor([net.D / 2.]))
