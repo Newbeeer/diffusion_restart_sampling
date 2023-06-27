@@ -25,7 +25,11 @@ torchrun --rdzv_endpoint=0.0.0.0:1201 --nproc_per_node=8 generate.py
 	--restart
 ```
 
+If you would like to visualize the images given prompt, run:
 
+```angular2html
+python3 visualization.py --prompt {prompt} --w {w} --steps {steps} --scheduler {scheduler} (--restart)
+```
 
 #### 3. Evaluation
 

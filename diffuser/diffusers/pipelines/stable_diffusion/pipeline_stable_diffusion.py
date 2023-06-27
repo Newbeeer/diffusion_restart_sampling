@@ -691,17 +691,14 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 dist.print0("restart steps:", restart_list)
 
             temp_list = dict()
-
             # map t_min to index
             for key, value in restart_list.items():
                 temp_list[int(torch.argmin(abs(sigmas - key), dim=0))] = value
-
             restart_list = temp_list
-
-            S_noise = S_noise
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        image_list = []
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps[:-1]):
                 # expand the latents if we are doing classifier free guidance
@@ -749,6 +746,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 else:
                     latents = latents_next
 
+                image_list.append(self.decode_latents(latents[3].unsqueeze(0)))
+
                 # ================= restart ================== #
                 if i + 1 in restart_list.keys():
                     restart_idx = i + 1
@@ -758,7 +757,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
                         # convert t_max to index
                         max_idx = int(torch.argmin(abs(all_sigmas - restart_list[restart_idx][2]), dim=0))
-                        new_scheduler.timesteps = torch.round(torch.linspace(timesteps[i+1], max_idx, restart_list[restart_idx][1]).flip([0])).long()
+                        new_scheduler.timesteps = torch.round(torch.linspace(timesteps[i+1], max_idx, restart_list[restart_idx][0]).flip([0])).long()
                         new_scheduler.timesteps.to(self.scheduler.timesteps.device)
 
                         new_t_steps = new_scheduler.timesteps
@@ -812,9 +811,10 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
                                 latents = new_scheduler.step(0.5 * noise_pred + 0.5 * noise_pred_prime, j, latents,
                                                                   **extra_step_kwargs).prev_sample
-
                             else:
                                 latents = latents_next
+
+                            image_list.append(self.decode_latents(latents[3].unsqueeze(0)))
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -822,8 +822,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # test_latent = latents.view(len(latents), -1)
-        # print("mean:", torch.mean(test_latent), "std:", torch.std(latents))
 
         if output_type == "latent":
             image = latents
@@ -854,4 +852,4 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept), image_list

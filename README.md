@@ -1,6 +1,6 @@
 # Restart sampling
 
-[Restart Sampling for Improving Generative Processes]()
+[Restart Sampling for Improving Generative Processes](https://arxiv.org/abs/2306.14878)
 
 *by Yilun Xu, Mingyang Deng, Xiang Cheng, Yonglong Tian, Ziming Liu and Tommi S. Jaakkola*
 

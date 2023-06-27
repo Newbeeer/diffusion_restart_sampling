@@ -52,8 +52,6 @@ rank_batches_index = all_batches_index[dist.get_rank():: dist.get_world_size()]
 pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 dist.print0("default scheduler config:")
 dist.print0(pipe.scheduler.config)
-# print(pipe.scheduler.compatibles)
-# print(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
 if args.scheduler == 'DDPM':

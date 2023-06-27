@@ -91,16 +91,27 @@ def restart_sampler(
                 dist.print0(f"restart at {restart_idx} with {new_t_steps}")
                 new_total_step = len(new_t_steps)
                 if pfgmpp:
-                    beta_gen = Beta(torch.FloatTensor([N / 2.]), torch.FloatTensor([net.D / 2.]))
-                    sample_norm = beta_gen.sample(torch.Size([len(x_next)])).to(x_next.device).double()
-                    # inverse beta distribution
-                    inverse_beta = sample_norm / (1 - sample_norm)
+                    # convert sigma to radius by r=sigma*sqrt(D)
+                    old_r = new_t_steps[-1] * np.sqrt(net.D)
+                    new_r = new_t_steps[0] * np.sqrt(net.D)
 
-                    sample_norm = torch.sqrt(inverse_beta) * t_steps[restart_idx] * np.sqrt(net.D)
-                    gaussian = torch.randn(N).to(sample_norm.device)
-                    unit_gaussian = gaussian / torch.norm(gaussian, p=2)
-                    init_sample = unit_gaussian * sample_norm
-                    x_next = x_next + init_sample.view_as(x_next) * S_noise
+                    z = torch.randn(len(x_next), net.D).to(x_next.device)
+                    z /= z.norm(p=2, dim=1, keepdim=True)
+                    z *= old_r
+
+                    # uniform sampling on the sphere in N+D dimension
+                    dir = torch.randn(len(x_next), N+net.D).to(x_next.device)
+                    dir /= dir[:, N:].norm(dim=1, keepdim=True)
+
+                    # determine the length of the move
+                    dot = (z * dir[:, N:]).sum(dim=1)
+                    randint = torch.randint(1, size=(x_next.shape[0],)).float().to(x_next.device)
+                    moves = (-dot + torch.sqrt(dot ** 2 + (new_r ** 2 - old_r ** 2))) * randint + (
+                                -dot - torch.sqrt(dot ** 2 + (new_r ** 2 - old_r ** 2))) * (1 - randint)
+                    moves = moves.view(len(x_next), 1, 1, 1).to(x_next.device)
+
+                    # apply PFGM++ perturbation kernel from old radius to new radius
+                    x_next = x_next + moves * dir[:, :N].view_as(x_next) * S_noise
                 else:
                     x_next = x_next + randn_like(x_next) * (new_t_steps[0] ** 2 - new_t_steps[-1] ** 2).sqrt() * S_noise
 
