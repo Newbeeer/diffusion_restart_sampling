@@ -25,11 +25,18 @@ torchrun --rdzv_endpoint=0.0.0.0:1201 --nproc_per_node=8 generate.py
 	--restart
 ```
 
-If you would like to visualize the images given prompt, run:
+If you would like to visualize the images given text prompt, run:
 
-```angular2html
-python3 visualization.py --prompt {prompt} --w {w} --steps {steps} --scheduler {scheduler} (--restart)
+```python
+python3 visualization.py --prompt {prompt} --w {w} --steps {steps} --scheduler {scheduler}  (--restart)
+
+prompt: text prompt. defautlt='a photo of an astronaut riding a horse on mars'
+steps: number of sampling steps (default=50) 
+scheduler: baseline method (DDIM | DDPM)
+w: classifier-guidance weight ({2,3,5,8})
 ```
+
+
 
 #### 3. Evaluation
 

@@ -31,7 +31,7 @@ os.makedirs('./vis', exist_ok=True)
 
 # prompt_list = ["a photo of an astronaut riding a horse on mars", "a raccoon playing table tennis",
 #           "Intricate origami of a fox in a snowy forest", "A transparent sculpture of a duck made out of glass"]
-prompt_list = ["A transparent sculpture of a duck made out of glass"]
+prompt_list = [args.propmt]
 
 
 for prompt_ in prompt_list:
@@ -54,20 +54,11 @@ for prompt_ in prompt_list:
 
     # Restart
     generator = torch.Generator(device="cuda").manual_seed(args.generate_seed)
-    out, image_list = pipe(prompt, generator=generator, num_inference_steps=args.steps, guidance_scale=args.w,
+    out, _ = pipe(prompt, generator=generator, num_inference_steps=args.steps, guidance_scale=args.w,
                  restart=args.restart, second_order=args.second, output_type='tensor')
     image = out.images
 
-    # npz save the list image_list
-    np.savez(f'./vis/array2.npz', image_list=image_list)
-
-    # # list of numpy images (image_list) to gif
-    # print(image_list[0].shape, image_list)
-    # imgs = [Image.fromarray(img[0]) for img in image_list]
-    # # duration is the number of milliseconds between frames; this is 40 frames per second
-    # imgs[0].save("array.gif", save_all=True, append_images=imgs[1:], duration=50, loop=0)
-
-
+    print(f'image saving to ./vis/{prompt_}_{args.scheduler}_restart_True_steps_{args.steps}_w_{args.w}_seed_{args.generate_seed}.png')
     image_grid = make_grid(torch.from_numpy(image).permute(0, 3, 1, 2), nrow=int(np.sqrt(len(image))))
     save_image(image_grid,
                f"./vis/{prompt_}_{args.scheduler}_restart_True_steps_{args.steps}_w_{args.w}_seed_{args.generate_seed}.png")
