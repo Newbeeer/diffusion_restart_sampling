@@ -120,7 +120,11 @@ stats_path: path to FID statistics, such as ./cifar10-32x32.npz or ./imagenet-64
 
 TODO: merge into the diffuser repo.
 
-Since we adopt the [huggingface/diffuser](https://github.com/huggingface/diffusers/tree/main) repo, we keep all their structure and files. But we only apply Restart sampler in the `/diffuser/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py` files. More exact pointer is ``
+
+
+💡  Since we adopt the [huggingface/diffuser](https://github.com/huggingface/diffusers/tree/main) repo, we keep all their structure and files. But we only apply Restart sampler in the `/diffuser/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py` files. **More exact pointer is [Restart code block](https://github.com/Newbeeer/diffusion_restart_sampling/blob/b1e0022406e619cafb118a69b70a90484fb84c94/diffuser/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L676-L817)** in Stable diffusion.
+
+
 
 **The working directory for standard benchmarks is under `./diffuser`**
 
