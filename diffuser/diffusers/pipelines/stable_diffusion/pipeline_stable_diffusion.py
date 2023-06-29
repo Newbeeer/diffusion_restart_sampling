@@ -746,7 +746,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 else:
                     latents = latents_next
 
-                image_list.append(self.decode_latents(latents[3].unsqueeze(0)))
+                image_list.append(self.decode_latents(latents[0].unsqueeze(0)))
 
                 # ================= restart ================== #
                 if i + 1 in restart_list.keys():
@@ -814,7 +814,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                             else:
                                 latents = latents_next
 
-                            image_list.append(self.decode_latents(latents[3].unsqueeze(0)))
+                            image_list.append(self.decode_latents(latents[0].unsqueeze(0)))
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
