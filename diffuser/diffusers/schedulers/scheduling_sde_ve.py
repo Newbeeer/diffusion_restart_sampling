@@ -157,9 +157,13 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: torch.FloatTensor,
         timestep: int,
+        index: int,
+        next_index: int,
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
+        model_output_2 = None,
+        sde: bool = False,
     ) -> Union[SdeVeOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -191,8 +195,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         # mps requires indices to be in the same device, so we use cpu as is the default with cuda
         timesteps = timesteps.to(self.discrete_sigmas.device)
 
-        sigma = self.discrete_sigmas[timesteps].to(sample.device)
-        adjacent_sigma = self.get_adjacent_sigma(timesteps, timestep).to(sample.device)
+        #sigma = self.discrete_sigmas[timesteps].to(sample.device)
+        sigma = self.sigmas[index].to(sample.device)
+        adjacent_sigma = torch.zeros_like(sigma) if (next_index) >= len(self.sigmas) else self.sigmas[next_index].to(sample.device)
+
+        #adjacent_sigma = self.get_adjacent_sigma(timesteps, timestep).to(sample.device)
         drift = torch.zeros_like(sample)
         diffusion = (sigma**2 - adjacent_sigma**2) ** 0.5
 
@@ -201,15 +208,25 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         diffusion = diffusion.flatten()
         while len(diffusion.shape) < len(sample.shape):
             diffusion = diffusion.unsqueeze(-1)
-        drift = drift - diffusion**2 * model_output
 
+        if sde:
+            drift = drift - diffusion**2 * model_output
+        elif model_output_2 is None:
+            drift = drift - 0.5 * diffusion**2 * model_output
+        else:
+            drift = drift - 0.5 * diffusion**2 * 0.5 * 1/sigma * (sigma * model_output + adjacent_sigma * model_output_2)
+        print("sigma", sigma, "adjacent_sigma", adjacent_sigma)
         #  equation 6: sample noise for the diffusion term of
         noise = randn_tensor(
             sample.shape, layout=sample.layout, generator=generator, device=sample.device, dtype=sample.dtype
         )
         prev_sample_mean = sample - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
-        prev_sample = prev_sample_mean + diffusion * noise  # add impact of diffusion field g
+
+        if sde:
+            prev_sample = prev_sample_mean + diffusion * noise  # add impact of diffusion field g
+        else:
+            prev_sample = prev_sample_mean
 
         if not return_dict:
             return (prev_sample, prev_sample_mean)

@@ -25,11 +25,17 @@ from torch_utils import misc
 #----------------------------------------------------------------------------
 # Proposed Restart sampler
 
+
+
+
+
+
+
 def restart_sampler(
     net, latents, class_labels=None, randn_like=torch.randn_like,
     num_steps=18, sigma_min=0.002, sigma_max=80, rho=7,
     S_churn=0, S_min=0, S_max=float('inf'), S_noise=0,
-    pfgmpp=False, restart_info="", restart_gamma=0
+    pfgmpp=False, restart_info="", restart_gamma=0, schedule='vp',
 ):
 
     def get_steps(min_t, max_t, num_steps, rho):
@@ -43,12 +49,129 @@ def restart_sampler(
     sigma_min = max(sigma_min, net.sigma_min)
     sigma_max = min(sigma_max, net.sigma_max)
 
+
+    if schedule == 'vp':
+
+        epsilon_s = 1e-3
+
+        vp_sigma = lambda beta_d, beta_min: lambda t: (np.e ** (0.5 * beta_d * (t ** 2) + beta_min * t) - 1) ** 0.5
+        sigma_min = vp_sigma(beta_d=19.9, beta_min=0.1)(t=epsilon_s)
+        sigma_max = vp_sigma(beta_d=19.9, beta_min=0.1)(t=1)
+
+        # Compute corresponding betas for VP.
+        vp_beta_d = 2 * (np.log(sigma_min ** 2 + 1) / epsilon_s - np.log(sigma_max ** 2 + 1)) / (epsilon_s - 1)
+        vp_beta_min = np.log(sigma_max ** 2 + 1) - 0.5 * vp_beta_d
+        sigma = vp_sigma(vp_beta_d, vp_beta_min)
+        s = lambda t: 1 / (1 + sigma(t) ** 2).sqrt()
+
+        alpha = lambda t: s(t)
+        sigma_hat = lambda t: sigma(t) * alpha(t)
+
+        sigma2t = lambda s: (- vp_beta_min + (vp_beta_min ** 2 + 2 * vp_beta_d * torch.log(1 + s**2)) ** 0.5) / vp_beta_d
+        t2lambda = lambda t: torch.log(alpha(t)/sigma_hat(t))
+        lambda2t = lambda l: (- vp_beta_min + (vp_beta_min ** 2 + 2 * vp_beta_d * torch.log(1/torch.exp(2*l)+1)) ** 0.5) / vp_beta_d
+
+
+
+
+    def sigma_to_lambda(sigma):
+        return t2lambda(sigma2t(sigma))
+
+    def lambda_to_sigma(l):
+        return sigma(lambda2t(l))
+
+
     # Time step discretization.
     step_indices = torch.arange(num_steps, dtype=torch.float64, device=latents.device)
     t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1) * (
                 sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
     t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])])  # t_N = 0
+
+    #print(t_steps)
+    # the following schedule in DPM-solver paper performs worse than the EDM schedule
+    # if schedule == 'vp':
+    #     l_upper = t2lambda(torch.tensor([1.]))
+    #     l_lower = t2lambda(torch.tensor([1e-3]))
+    #     logSNR_steps = torch.linspace(float(l_upper.numpy()), float(l_lower.numpy()), num_steps + 1).to(t_steps.device)
+    #     t_steps = lambda_to_sigma(logSNR_steps)
+
     total_step = len(t_steps)
+
+    def dpm_solver_1(net, x_hat, t_next, t_hat):
+
+        l_next = sigma_to_lambda(t_next)
+        l_hat = sigma_to_lambda(t_hat)
+        h = l_next - l_hat
+
+        t_next_ = sigma2t(t_next)
+        t_hat_ = sigma2t(t_hat)
+
+        denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
+        d_cur = (x_hat - denoised) / t_hat
+        # print(sigma_hat(t_next_)/alpha(t_next_) * (torch.exp(h) - 1), t_hat - t_next, t_hat)
+        x_next = x_hat - sigma_hat(t_next_)/alpha(t_next_) * (torch.exp(h) - 1) * d_cur
+
+        return x_next
+
+    def dpm_solver_2(net, x_hat, t_next, t_hat, r_1=0.5):
+
+        l_next = sigma_to_lambda(t_next)
+        l_hat = sigma_to_lambda(t_hat)
+        h = l_next - l_hat
+
+        t_inter_ = lambda2t((l_hat + r_1 * h))
+        t_inter = sigma(t_inter_)
+        t_next_ = sigma2t(t_next)
+        t_hat_ = sigma2t(t_hat)
+
+        denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
+        d_cur = (x_hat - denoised) / t_hat
+        x_inter = x_hat - sigma_hat(t_inter_)/alpha(t_inter_) * (torch.exp(r_1 * h) - 1) * d_cur
+
+        denoised = net(x_inter, t_inter, class_labels).to(torch.float64)
+        d_inter = (x_inter - denoised) / t_inter
+        x_next = x_hat - (1-1/(2*r_1)) * sigma_hat(t_next_)/alpha(t_next_) * (torch.exp(h) - 1) * d_cur - 1/(2*r_1) * sigma_hat(t_next_)/alpha(t_next_) * (torch.exp(h) - 1) * d_inter
+
+        return x_next
+
+    def dpm_solver_3(net, x_hat, t_next, t_hat, r_1=1./3, r_2=2./3):
+
+        l_next = sigma_to_lambda(t_next)
+        l_hat = sigma_to_lambda(t_hat)
+        h = l_next - l_hat
+
+        t_inter_ = lambda2t((l_hat + r_1 * h))
+        t_inter = sigma(t_inter_)
+
+        t_inter_2_ = lambda2t((l_hat + r_2 * h))
+        t_inter_2 = sigma(t_inter_2_)
+
+        t_next_ = sigma2t(t_next)
+        t_hat_ = sigma2t(t_hat)
+
+        denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
+        d_cur = (x_hat - denoised) / t_hat
+        x_inter = x_hat - sigma_hat(t_inter_)/alpha(t_inter_) * (torch.exp(r_1 * h) - 1) * d_cur
+
+        denoised = net(x_inter, t_inter, class_labels).to(torch.float64)
+        d_inter = (x_inter - denoised) / t_inter
+
+        D_1 = d_inter - d_cur
+
+        x_inter_2 = x_hat - sigma_hat(t_inter_2_)/alpha(t_inter_2_) * (torch.exp(r_2 * h) - 1) * d_cur \
+                    - r_2/r_1 * sigma_hat(t_inter_2_)/alpha(t_inter_2_) * ((torch.exp(r_2 * h)-1)/(r_2 * h) - 1) * D_1
+
+        denoised = net(x_inter_2, t_inter_2, class_labels).to(torch.float64)
+        d_inter_2 = (x_inter_2 - denoised) / t_inter_2
+
+        D_2 = d_inter_2 - d_cur
+
+        x_next = x_hat - sigma_hat(t_next_)/alpha(t_next_) * (torch.exp(h) - 1) * d_cur \
+                 - 1/(r_2) * sigma_hat(t_next_)/alpha(t_next_) * ((torch.exp(h)-1)/h - 1) * D_2
+
+        return x_next
+
+
     if pfgmpp:
         x_next = latents.to(torch.float64)
     else:
@@ -57,28 +180,37 @@ def restart_sampler(
 
     # {[num_steps, number of restart iteration (K), t_min, t_max], ... }
     import json
+
     restart_list = json.loads(restart_info) if restart_info != '' else {}
     # cast t_min to the index of nearest value in t_steps
     restart_list = {int(torch.argmin(abs(t_steps - v[2]), dim=0)): v for k, v in restart_list.items()}
-    # dist.print0(f"restart configuration: {restart_list}")
-
+    #dist.print0(f"restart configuration: {restart_list}")
+    nfe = 0
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):  # 0, ..., N_main -1
         x_cur = x_next
         # Increase noise temporarily.
         gamma = min(S_churn / num_steps, np.sqrt(2) - 1) if S_min <= t_cur <= S_max else 0
-        t_hat = net.round_sigma(t_cur + gamma * t_cur)
+        t_hat = t_cur
         x_hat = x_cur + (t_hat ** 2 - t_cur ** 2).sqrt() * S_noise * randn_like(x_cur)
         # Euler step.
 
-        denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
-        d_cur = (x_hat - denoised) / t_hat
-        x_next = x_hat + (t_next - t_hat) * d_cur
+        if i < total_step - 3:
+            x_next = dpm_solver_3(net, x_hat, t_next, t_hat)
+            nfe += 3
+        elif i < total_step - 2:
+            x_next = dpm_solver_2(net, x_hat, t_next, t_hat)
+            nfe += 2
+        else:
+            denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
+            d_cur = (x_hat - denoised) / t_hat
+            x_next = x_hat + (t_next - t_hat) * d_cur
+            nfe += 1
 
-        # Apply 2nd order correction.
-        if i < num_steps - 1:
-            denoised = net(x_next, t_next, class_labels).to(torch.float64)
-            d_prime = (x_next - denoised) / t_next
-            x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
+        # # Apply 2nd order correction.
+        # if i < num_steps - 1:
+        #     denoised = net(x_next, t_next, class_labels).to(torch.float64)
+        #     d_prime = (x_next - denoised) / t_next
+        #     x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
 
         # ================= restart ================== #
         if i + 1 in restart_list.keys():
@@ -121,18 +253,12 @@ def restart_sampler(
                     x_cur = x_next
                     gamma = restart_gamma if S_min <= t_cur <= S_max else 0
                     t_hat = net.round_sigma(t_cur + gamma * t_cur)
-
                     x_hat = x_cur + (t_hat ** 2 - t_cur ** 2).sqrt() * S_noise * randn_like(x_cur)
-                    denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
-                    d_cur = (x_hat - denoised) / (t_hat)
-                    x_next = x_hat + (t_next - t_hat) * d_cur
 
-                    # Apply 2nd order correction.
-                    if j < new_total_step - 2 or new_t_steps[-1] != 0:
-                        denoised = net(x_next, t_next, class_labels).to(torch.float64)
-                        d_prime = (x_next - denoised) / t_next
-                        x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
+                    x_next = dpm_solver_3(net, x_hat, t_next, t_hat)
+                    nfe += 3
 
+    print(f"nfe: {nfe}")
     return x_next
 
 

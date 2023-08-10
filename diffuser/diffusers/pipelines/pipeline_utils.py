@@ -894,6 +894,8 @@ class DiffusionPipeline(ConfigMixin):
         pipeline_class = _get_pipeline_class(
             cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
         )
+        print(f"Loading pipeline class {pipeline_class} from {cached_folder}")
+        print("config_dict", config_dict)
 
         # DEPRECATED: To be removed in 1.0.0
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(

@@ -41,7 +41,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        num_inference_steps: int = 2000,
+        num_inference_steps: int = 150,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -70,26 +70,160 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         model = self.unet
 
-        sample = randn_tensor(shape, generator=generator) * self.scheduler.init_noise_sigma
+        # sigma_max = 1300
+        # sigma_min = 0.002
+        # rho = 7
+        # step_indices = torch.arange(num_inference_steps, dtype=torch.float64).cuda()
+        # t_steps = (sigma_max ** (1 / rho) + step_indices / (num_inference_steps - 1) * (
+        #         sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
+        # t_steps = torch.cat([t_steps, torch.zeros_like(t_steps[:1])]).float() # t_N = 0
+        #
+
+        # fix random seeds
+
+        def seed_everything(seed: int):
+            import random, os
+            import numpy as np
+
+            random.seed(seed)
+            os.environ['PYTHONHASHSEED'] = str(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = True
+
+        seed_everything(123)
+        sample = torch.randn(shape) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
         self.scheduler.set_sigmas(num_inference_steps)
 
+        def euler(scores, x, sigma_t, sigma_t_next):
+            # denoised = x + sigma_t ** 2 * scores
+            # d_cur = (x - denoised) / sigma_t
+            d_cur = - scores * sigma_t
+            x_next = x + (sigma_t_next - sigma_t) * d_cur
+            return x_next
+
+        restart = False
+        second = True
+        sde = False
+        restart_list = [i for i in range(50, 1000, 200)]
+        restart_list_2 = [i for i in range(1, 50, 20)]
+        restart_list = restart_list + restart_list_2
+        restart_list += [0.1, 0.4]
+        temp_list = []
+        # map t_min to index
+        for value in restart_list:
+            temp_list.append(int(torch.argmin(abs(self.scheduler.sigmas - value), dim=0)))
+        restart_list = temp_list
+        print("restart_list:", restart_list)
+
+        # print("total steps:", len(self.scheduler.timesteps))
+        # print("total timesteps:", self.scheduler.timesteps)
+        # print("total sigmas:", len(self.scheduler.sigmas))
+        # total_steps = len(t_steps)
+
+        nfe = 0
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
+        #for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
+
+            sample_cur = sample
+            #print("step:", i, "t_cur:", t, "sigma_t:", self.scheduler.sigmas[i])
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=self.device)
 
-            # correction step
-            for _ in range(self.scheduler.config.correct_steps):
-                model_output = self.unet(sample, sigma_t).sample
-                sample = self.scheduler.step_correct(model_output, sample, generator=generator).prev_sample
+            # # correction step
+            if sde:
+                for _ in range(self.scheduler.config.correct_steps):
+                    model_output = self.unet(sample, sigma_t).sample
+                    sample = self.scheduler.step_correct(model_output, sample, generator=generator).prev_sample
+                    nfe += 1
 
             # prediction step
+            #print("step:", i, "t_cur:", t_cur, "t_next:", t_next)
+
             model_output = model(sample, sigma_t).sample
-            output = self.scheduler.step_pred(model_output, t, sample, generator=generator)
+            output = self.scheduler.step_pred(model_output, t, i, i+1, sample, generator=generator, sde=sde)
+            nfe += 1
+            sample = output.prev_sample
+            sample_mean = output.prev_sample_mean
 
-            sample, sample_mean = output.prev_sample, output.prev_sample_mean
+            if second and i < len(self.scheduler.timesteps) - 1:
+                sigma_t_2 = self.scheduler.sigmas[i+1] * torch.ones(shape[0], device=self.device)
+                model_output_2 = model(sample, sigma_t_2).sample
+                output_2 = self.scheduler.step_pred(model_output, t, i, i+1, sample_cur, model_output_2=model_output_2, generator=generator)
+                nfe += 1
+                sample = output_2.prev_sample
+                sample_mean = output_2.prev_sample_mean
 
+            if restart and i in restart_list:
+
+                if sigma_t < 5:
+                    j = i - 15
+                    K = 2
+                    gap = 2
+                elif sigma_t < 50:
+                    j = i - 10
+                    K = 2
+                    gap = 2
+                else:
+                    j = i - 6
+                    K = 1
+                    gap = 1
+
+                new_timesteps = self.scheduler.timesteps[j:i+1]
+                new_sigma = self.scheduler.sigmas[j:]
+
+                for restart_k in range(K):
+                    #gap = 1
+                    new_timesteps = torch.cat((new_timesteps[:-1][::gap], new_timesteps[-1].unsqueeze(0)))
+                    new_sigma = torch.cat((new_sigma[:-1][::gap], new_sigma[-1].unsqueeze(0)))
+
+                    sigma_i = self.scheduler.sigmas[i + 1]
+                    sigma_j = self.scheduler.sigmas[j]
+                    print(f'{sigma_i} -> {sigma_j}')
+                    sample = sample + torch.randn_like(sample) * (sigma_j ** 2 - sigma_i ** 2).sqrt()
+
+                    for k, t in enumerate(new_timesteps):
+                        sample_cur = sample
+                        sigma_t = new_sigma[k] * torch.ones(shape[0], device=self.device)
+
+                        model_output = model(sample, sigma_t).sample
+                        if k == len(new_timesteps) - 1:
+                            output = self.scheduler.step_pred(model_output, t, j + k, j + k + 1, sample,
+                                                              generator=generator, sde=sde)
+                        else:
+                            output = self.scheduler.step_pred(model_output, t, j + k, j + k + gap, sample,
+                                                              generator=generator)
+
+                        nfe += 1
+                        sample = output.prev_sample
+                        sample_mean = output.prev_sample_mean
+
+                        if second:
+                            sigma_t_2 = new_sigma[k + 1] * torch.ones(shape[0], device=self.device)
+                            model_output_2 = model(sample, sigma_t_2).sample
+                            interval = 1 if k == len(new_timesteps) - 1 else gap
+                            output_2 = self.scheduler.step_pred(model_output, t, j + k, j + k + interval, sample_cur,
+                                                                model_output_2=model_output_2, generator=generator)
+                            nfe += 1
+                            sample = output_2.prev_sample
+                            sample_mean = output_2.prev_sample_mean
+
+
+        # model_output = model(sample, t_cur).sample
+            # d_cur = - model_output * t_cur
+            # sample = sample_cur + 2 * (t_next - t_cur) * d_cur \
+            #          + torch.sqrt(2 * t_cur) * torch.sqrt(t_cur - t_next) * randn_tensor(shape, generator=generator).to(sample.device)
+
+            # if i < total_steps - 2:
+            #     model_output = model(sample, t_next).sample
+            #     d_prime = - model_output * t_next
+            #     sample = sample_cur + (t_next - t_cur) * (0.5 * d_cur + 0.5 * d_prime)
+
+        print("nfe:", nfe)
         sample = sample_mean.clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
