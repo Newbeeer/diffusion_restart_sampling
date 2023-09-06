@@ -10,7 +10,6 @@ from PIL import Image
 parser = argparse.ArgumentParser(description='Generate images with stable diffusion')
 parser.add_argument('--steps', type=int, default=30, help='number of inference steps during sampling')
 parser.add_argument('--generate_seed', type=int, default=6)
-parser.add_argument('--num', type=int, default=1)
 parser.add_argument('--w', type=float, default=8)
 parser.add_argument('--bs', type=int, default=16)
 parser.add_argument('--max_cnt', type=int, default=5000, help='number of maximum geneated samples')
@@ -31,7 +30,7 @@ os.makedirs('./vis', exist_ok=True)
 
 # prompt_list = ["a photo of an astronaut riding a horse on mars", "a raccoon playing table tennis",
 #           "Intricate origami of a fox in a snowy forest", "A transparent sculpture of a duck made out of glass"]
-prompt_list = [args.propmt]
+prompt_list = [args.prompt]
 
 
 for prompt_ in prompt_list:

@@ -41,7 +41,8 @@ class ScoreSdeVePipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        num_inference_steps: int = 150,
+        seed: int = 0,
+        num_inference_steps: int = 200,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -81,6 +82,11 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         # fix random seeds
 
+        # measure the time
+        import time
+        start_time = time.time()
+
+
         def seed_everything(seed: int):
             import random, os
             import numpy as np
@@ -93,7 +99,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = True
 
-        seed_everything(123)
+        seed_everything(seed)
         sample = torch.randn(shape) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
 
@@ -107,8 +113,8 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             x_next = x + (sigma_t_next - sigma_t) * d_cur
             return x_next
 
-        restart = False
-        second = True
+        restart = True
+        second = False
         sde = False
         restart_list = [i for i in range(50, 1000, 200)]
         restart_list_2 = [i for i in range(1, 50, 20)]
@@ -223,8 +229,17 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             #     d_prime = - model_output * t_next
             #     sample = sample_cur + (t_next - t_cur) * (0.5 * d_cur + 0.5 * d_prime)
 
+        # measure elapsed time
+        end_time = time.time()
+        # measure the time in seconds
+        elapsed_time = end_time - start_time
+        print("elapsed time:", elapsed_time)
+
         print("nfe:", nfe)
         sample = sample_mean.clamp(0, 1)
+        if output_type == 'tensor':
+            return sample.cpu()
+
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
