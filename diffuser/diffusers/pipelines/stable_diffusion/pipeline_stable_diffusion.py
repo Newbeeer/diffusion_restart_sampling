@@ -35,7 +35,6 @@ from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 import copy
-import numpy as np
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -673,13 +672,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
 
-
         restart_list = {}
-        all_sigmas = torch.sqrt((1 - self.scheduler.alphas_cumprod) / self.scheduler.alphas_cumprod)
-        sigma_max = all_sigmas.max()
-
         if restart:
-            #all_sigmas = torch.sqrt((1 - self.scheduler.alphas_cumprod) / self.scheduler.alphas_cumprod)
+            all_sigmas = torch.sqrt((1 - self.scheduler.alphas_cumprod) / self.scheduler.alphas_cumprod)
             sigmas = all_sigmas[timesteps.cpu().numpy()]
 
             # {t_min: [N_restart, K, t_max], ... }
@@ -704,11 +699,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         image_list = []
-        pre_noise_pred_text = None
-        pre_pred_original_sample = None
-        pre_2_noise_pred_text = None
-        history_noise_pred_text = torch.zeros((len(timesteps[:-1]), * latents.shape)).to(latents.device)
-        pre_latent = None
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps[:-1]):
                 # expand the latents if we are doing classifier free guidance
@@ -726,77 +716,10 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    #noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                    guide_idx = 5
-
-                    if i > guide_idx:
-                        # In the first 10 steps, we still follow the conventional cfg (I will explain the reason)
-                        pre_noise_pred_text = history_noise_pred_text[i-1]
-                        # new_d = pre_noise_pred_text \
-                        #                     * noise_pred_text.norm(p=2, dim=[1,2,3], keepdim=True)\
-                        #                     / pre_noise_pred_text.norm(p=2, dim=[1,2,3], keepdim=True)
-                        # if i < 10:
-                        #     new_d = pre_noise_pred_text - noise_pred_text
-                        # else:
-                        #     new_d = noise_pred_text - pre_noise_pred_text
-
-                        pre_noise_pred_text = pre_noise_pred_text * noise_pred_text.norm(p=2, dim=[1, 2, 3],
-                                                                   keepdim=True).mean() / pre_noise_pred_text.norm(p=2,
-                                                                                                                   dim=[1,2,3],
-                                                                                                                   keepdim=True).mean()
-                        new_d = noise_pred_text - pre_noise_pred_text
-
-                        # # new_off_set = noise_pred_text - new_d
-                        # old_off_set = noise_pred_text - noise_pred_uncond
-                        # #
-                        # noise_pred_text_vec = noise_pred_text.view(len(noise_pred_text), -1)
-                        # pre_noise_pred_text_vec = pre_noise_pred_text.view(len(pre_noise_pred_text), -1)
-                        # pre_noise_pred_text_vec_2 = history_noise_pred_text[i-2].view(len(pre_noise_pred_text), -1)
-                        # noise_pred_uncond_vec = noise_pred_uncond.view(len(noise_pred_uncond), -1)
-                        #
-                        # for num in range(len(noise_pred_text)):
-                        #     A = torch.stack([noise_pred_text_vec[num],
-                        #                      pre_noise_pred_text_vec[num]]).transpose(0,1)
-                        #     B = (noise_pred_text_vec[num] - noise_pred_uncond_vec[num]).view(-1, 1)
-                        #
-                        #     X = torch.linalg.lstsq(A, B).solution
-                            #print(f"num:{num}, X:{X}")
-                            # new_d[num] = noise_pred_text[num] * X[0] + \
-                            #              pre_noise_pred_text[num] * X[1]
-
-
-                        # compute cosine similarity
-                        # orthogonal = old_off_set - new_d
-                        # orthogonal_nor = orthogonal / orthogonal.norm(p=2, dim=[1,2,3], keepdim=True)
-                        # new_off_set_nor = new_d / new_d.norm(p=2, dim=[1,2,3], keepdim=True)
-                        # old_off_set_nor = old_off_set / old_off_set.norm(p=2, dim=[1, 2, 3], keepdim=True)
-                        #
-                        # print(i, sigma, (new_off_set_nor * old_off_set_nor).sum(dim=[1,2,3]),
-                        #       (new_off_set_nor * orthogonal_nor).sum(dim=[1,2,3]))
-
-                        # pre_pred_original_sample = pred_original_sample
-                        # pre_latent = latents
-
-                    #noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                    sigma = all_sigmas[t.cpu().numpy()]
-                    sigma = sigma.to(noise_pred_text.device)
-                    print(i, sigma)
-
-                    if i > guide_idx:
-                        scaling = sigma / 6
-                        # scaling = 1
-                        # scaling = 0
-                        noise_pred = noise_pred_text + scaling * guidance_scale * (new_d)
-                    else:
-                        noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                    history_noise_pred_text[i] = noise_pred_text
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                temp = 1 if i > guide_idx else 1
-                sde = False if i > guide_idx else False
-                latents_next = self.scheduler.step(noise_pred, i, latents, temp=temp, sde=sde, **extra_step_kwargs).prev_sample
+                latents_next = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
 
                 # Apply 2nd order correction (Heun).
                 if second_order and i < len(timesteps) - 2:
@@ -844,7 +767,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                             print("restart steps:", new_t_steps)
 
                         latents = self.scheduler.add_noise_between_t(latents, new_t_steps[-1], new_t_steps[0], generator, S_noise=S_noise)
-                        history_noise_pred_text_restart = torch.zeros((len(new_t_steps[:-1]), *latents.shape)).to(latents.device)
+
                         for j, new_t in enumerate(new_t_steps[:-1]):
                             # print(" restart:", new_t)
                             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -859,35 +782,12 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                             ).sample
 
                             # perform guidance
-                            guide_idx_restart = 0
                             if do_classifier_free_guidance:
-
                                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                                if j > guide_idx_restart:
-                                    # In the first 10 steps, we still follow the conventional cfg (I will explain the reason)
-                                    pre_noise_pred_text = history_noise_pred_text_restart[j - 1]
-                                    pre_noise_pred_text = pre_noise_pred_text * noise_pred_text.norm(p=2, dim=[1, 2, 3],
-                                                                                                     keepdim=True).mean() / pre_noise_pred_text.norm(
-                                        p=2,
-                                        dim=[1, 2, 3],
-                                        keepdim=True).mean()
-                                    new_d = noise_pred_text - pre_noise_pred_text
-
-
-                                if j > guide_idx_restart:
-                                    scaling = sigma / 6
-                                    # scaling = 1
-                                    # scaling = 0
-                                    noise_pred = noise_pred_text + scaling * guidance_scale * (new_d)
-                                else:
-                                    noise_pred = noise_pred_text + guidance_scale * (
-                                                noise_pred_text - noise_pred_uncond)
-
-                                #noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                             # compute the previous noisy sample x_t -> x_t-1
                             latents_next = new_scheduler.step(noise_pred, j, latents, **extra_step_kwargs).prev_sample
-                            history_noise_pred_text_restart[j] = noise_pred_text
 
                             # Apply 2nd order correction.
                             if  (j < len(new_t_steps) - 2 or new_t_steps[-1] > 1):
