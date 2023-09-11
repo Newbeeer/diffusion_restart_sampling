@@ -198,6 +198,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
+
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
@@ -326,6 +327,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
+        temp=1,
+        sde=False,
         variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
@@ -386,8 +389,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         #       torch.sqrt((1 - alpha_prod_t) / alpha_prod_t), '->', torch.sqrt((1 - alpha_prod_t_prev) / alpha_prod_t_prev))
         beta_prod_t = 1 - alpha_prod_t
 
+        # low temperature sampling
+        model_output = temp / (alpha_prod_t + (1-alpha_prod_t) * temp) * model_output
+
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        #print(self.config.prediction_type)
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
             pred_epsilon = model_output
@@ -421,10 +428,27 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_prev) ** (0.5) * pred_epsilon
+        #pred_sample_direction = (1 - alpha_prod_t_prev) ** (0.5) * pred_epsilon
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+        #prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+
+
+        if self.config.prediction_type == "epsilon":
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            pred_epsilon = model_output
+
+        noise = randn_tensor(
+                    model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
+                )
+        sigma_prev = ((1-alpha_prod_t_prev) / alpha_prod_t_prev) ** 0.5
+        sigma = ((1-alpha_prod_t) / alpha_prod_t) ** 0.5
+        x_hat = sample / alpha_prod_t ** (0.5)
+        if sde:
+            prev_sample = alpha_prod_t_prev ** (0.5) * (x_hat + 2 * (sigma_prev - sigma) * model_output + noise * torch.sqrt(sigma ** 2 - sigma_prev ** 2))
+        else:
+            prev_sample = alpha_prod_t_prev ** (0.5) * (
+                        x_hat + (sigma_prev - sigma) * model_output)
 
         if eta > 0:
             if variance_noise is not None and generator is not None:

@@ -49,7 +49,7 @@ for prompt_ in prompt_list:
     else:
         raise NotImplementedError
 
-    prompt = [prompt_] * 16
+    prompt = [prompt_] * 4
 
     # Restart
     generator = torch.Generator(device="cuda").manual_seed(args.generate_seed)

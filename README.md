@@ -16,7 +16,7 @@ Empirically, **Restart sampler surpasses previous diffusion SDE and ODE samplers
 
 Results on [Stable Diffusion v1.5](https://github.com/huggingface/diffusers):
 
-![schematic](assets/vis.png)
+![restart-min](/Users/aaronxu/Desktop/Experiment/github_repos/restart/assets/restart-min.gif)
 
 ---
 
