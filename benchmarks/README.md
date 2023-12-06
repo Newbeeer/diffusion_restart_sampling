@@ -40,7 +40,7 @@ Generating a large number of images can be time-consuming; the workload can be d
 
 ```shell
 torchrun --standalone --nproc_per_node=8 generate_restart.py --outdir=./imgs \ 
---restart_info='{restart_config}' --S_min=0.01 --S_max=1 --S_noise 1. \
+--restart_info='{restart_config}' --S_min=0.01 --S_max=1 --S_noise 1.003 \
 --steps={steps} --seeds=00000-49999 --name={name} (--pfgmpp=1) (--aug_dim={D})
 
 
@@ -55,7 +55,7 @@ The `restart_info` is in the format of  $\lbrace i: [N_{\textrm{Restart},i}, K_i
 
 ```shell
 torchrun --standalone --nproc_per_node=8 generate_restart.py --outdir=./imgs \ 
---restart_info='{"0": [4, 1, 19.35, 40.79], "1": [4, 1, 1.09, 1.92], "2": [4, 5, 0.59, 1.09], "3": [4, 5, 0.30, 0.59], "4": [6, 6, 0.06, 0.30]}' --S_min=0.01 --S_max=1 --S_noise 1. \
+--restart_info='{"0": [4, 1, 19.35, 40.79], "1": [4, 1, 1.09, 1.92], "2": [4, 5, 0.59, 1.09], "3": [4, 5, 0.30, 0.59], "4": [6, 6, 0.06, 0.30]}' --S_min=0.01 --S_max=1 --S_noise 1.003 \
 --steps=36 --seeds=00000-49999 --name=imagenet_edm
 ```
 
